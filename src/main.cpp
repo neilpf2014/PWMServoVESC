@@ -93,9 +93,7 @@ uint8_t TogLED(uint8_t state)
 	}
 	else
 	{
-		digitalWrite(LED_BUILTIN, LOW);// Turn the LED on (Note that LOW is the voltage level
-									   // but actually the LED is on; this is because 
-									   // it is active low on the ESP-01)
+		digitalWrite(LED_BUILTIN, LOW);// Turn the LED on
 		rState = 1;
 	}
 	return rState;
@@ -117,7 +115,6 @@ void setup() {
 
 	/** Setup Serial port to enter commands */
 	Serial.begin(115200);
-
 	/** Setup UART port (Serial1 on bluepill) */
 	Serial1.begin(115200);
 
@@ -125,7 +122,7 @@ void setup() {
 
 	/** Define which ports to use as UART */
 	UART.setSerialPort(&Serial1);
-
+	// init nunchuck buttons
 	upperBtn = false;
 	lowerBtn = false;
 	Yvalue = 127;
@@ -150,7 +147,7 @@ void setup() {
   TIMER4_BASE->DCR = 0;
   TIMER4_BASE->CCR1 = TccrVal;
 
-   // Example pulse lenght counting code init
+   // Pulse length counting code init
 
   pinMode(PA0, INPUT);
   delay(250);
@@ -185,7 +182,7 @@ void loop() {
 			lastCmd = command;
 			break;
 		}
-		/** The lowerButton is used to set cruise control */
+		/** Set cruise control off*/
 		case 'o':
 		{
 			//UART.nunchuck.lowerButton = false;
@@ -193,7 +190,7 @@ void loop() {
 			lastCmd = command;
 			break;
 		}
-		/** The upperButton is reverse */
+		/** The upperButton is reverse (we think ??)*/
 		case 'r':
 		{
 			//UART.nunchuck.upperButton = true;
@@ -222,13 +219,10 @@ void loop() {
 			if (throttle >= 0 && throttle <= 255) {
 
 				/** The valueY is used to control the speed, where 127 is the middle = no current */
-				//UART.nunchuck.valueY = throttle;
 				Yvalue = throttle;
 				lastCmd = "T value is " + String(throttle);
-
 			}
 			else {
-				//throttle = 127;
 				Yvalue = 127;
 				lastCmd = "invalid throttle value";
 			}
