@@ -5,6 +5,12 @@
     This is a mash up to 2 projects so needs some work
     Right now has code for both wii numchuck and PWM to VESC
     4/30/2019
+
+		Pins A9 A10 serial A9 gr, A10 orange
+		Pin A0 is in from RC
+		Pin PB6 is PWM out to VESC 
+		Pin PB0 is Analog read from throttle
+
 */
 #include <Arduino.h>
 #include <VescUart.h>
@@ -19,15 +25,16 @@ int32_t channel_1_start, channel_1_stop, channel_1;
 unsigned long pMills = 0;
 unsigned long p2Mills = 0;
 unsigned long cMills = 0;
-//unsigned long cTime = 500;
-unsigned long rTime = 20;
-uint32_t PotValue;
-uint32_t readPotValue;
-uint32_t PotNormValue;
-uint32_t TccrVal = 1000;
-uint8_t LEDstate = 1;
-
 unsigned long cTime = 100; // polling / send command time in ms
+unsigned long rTime = 20;  // polling / for PWM
+uint32_t TccrVal = 1000;
+
+uint32_t PotValue;
+uint32_t oldPotNValue;
+uint32_t PotNValue;
+uint32_t PWMremValue;
+
+uint8_t LEDstate = 1;
 
 //char Tchar;
 char CmdChr;
@@ -190,7 +197,7 @@ void loop() {
 			lastCmd = command;
 			break;
 		}
-		/** The upperButton is reverse (we think ??)*/
+		// The upperButton is reverse (we think ??)
 		case 'r':
 		{
 			//UART.nunchuck.upperButton = true;
@@ -210,24 +217,9 @@ void loop() {
 			Yvalue = 127;
 			lastCmd = command;
 		}
-		// set throttle / brake value
-		case 't':
-		{
-			Sspeed = command.substring(1);
-			Serial.println(Sspeed);
-			throttle = Sspeed.toInt();
-			if (throttle >= 0 && throttle <= 255) {
 
-				/** The valueY is used to control the speed, where 127 is the middle = no current */
-				Yvalue = throttle;
-				lastCmd = "T value is " + String(throttle);
-			}
-			else {
-				Yvalue = 127;
-				lastCmd = "invalid throttle value";
-			}
-			break;
-		}
+		// now getting removed nunchuck code
+		
 			default:
 				break;
 		}
@@ -259,19 +251,26 @@ void loop() {
 		}
 		UART.nunchuck.lowerButton = lowerBtn;
 		UART.nunchuck.upperButton = upperBtn;
-		UART.nunchuck.valueY = Yvalue;
+		//UART.nunchuck.valueY = Yvalue;
 		UART.setNunchuckValues();
 
-    Serial.print("pot Value is: " + String(channel_1) + " ");
-    Serial.println(PotNormValue);
+    // Serial.print("pot Value is: " + String(channel_1) + " ");
+    // Serial.println(PotNValue);
 		LEDstate = TogLED(LEDstate);
 	}
   if(cMills - p2Mills > rTime)
 	{
+		PWMremValue = channel_1;
 		p2Mills = cMills;
 		PotValue = analogRead(PB0);
-    PotNormValue = ((PotValue / 40)*10) + 1000;
-    
-    TIMER4_BASE->CCR1 = PotNormValue;
+		// this rownds to the 10's and scales the pot input
+    PotNValue = ((PotValue / 40)*10) + 1000;
+		if (PotNValue != oldPotNValue)
+		{
+			TIMER4_BASE->CCR1 = PotNValue;
+			oldPotNValue = PotNValue;
+		}
+		else
+			TIMER4_BASE->CCR1 = channel_1;
 	}
 }
