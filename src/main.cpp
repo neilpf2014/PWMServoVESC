@@ -21,7 +21,7 @@ VescUart UART;
 
 int32_t channel_1_start, channel_1_stop, channel_1;
 
-#define LED PB12
+// #define LED PB12 // if black pill
 unsigned long pMills = 0;
 unsigned long p2Mills = 0;
 unsigned long cMills = 0;
@@ -119,7 +119,7 @@ void handler_channel_1(void) {
   }
 }
 void setup() {
-
+	pinMode(LED_BUILTIN, OUTPUT);     // Initialize the LED_BUILTIN pin as an output
 	/** Setup Serial port to enter commands */
 	Serial.begin(115200);
 	/** Setup UART port (Serial1 on bluepill) */
