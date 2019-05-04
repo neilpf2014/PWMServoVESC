@@ -4,7 +4,7 @@
 
     This is a mash up to 2 projects so needs some work
     Right now has code for both wii numchuck and PWM to VESC
-    4/30/2019
+    5/3/2019
 
 		Pins A9 A10 serial A9 gr, A10 orange
 		Pin A0 is in from RC
@@ -25,8 +25,8 @@ int32_t channel_1_start, channel_1_stop, channel_1;
 unsigned long pMills = 0;
 unsigned long p2Mills = 0;
 unsigned long cMills = 0;
-unsigned long cTime = 100; // polling / send command time in ms
-unsigned long rTime = 20;  // polling / for PWM
+unsigned long cTime = 500; // polling / send command time in ms
+unsigned long rTime = 100;  // polling / for PWM
 uint32_t TccrVal = 1000;
 
 uint32_t PotValue;
@@ -38,9 +38,10 @@ uint8_t LEDstate = 1;
 
 //char Tchar;
 char CmdChr;
-String testStr;
+String VESCtlmty;
 String command;
 String Sspeed;
+String PWMinput;
 bool upperBtn;
 bool lowerBtn;
 int Yvalue;
@@ -57,9 +58,6 @@ char* readCharAInput(void)
 	char Ch = '\0';
 	char* retVal;
 	retVal = nullptr;
-// compiler was complaining under new version of STM32 librarys so the 2 below
-  char* noChar = new char[1];
-  noChar[0] = '\0';
 
 	// called each time the function is called to collect stuff from serial buffer
 	while ((Serial.available() > 0))
@@ -85,7 +83,7 @@ char* readCharAInput(void)
 	if (retVal != nullptr)
 		return retVal;
 	else
-		return noChar;
+		return (char *)'\0';
 }
 
 // Toggle state of onboard led
@@ -203,12 +201,14 @@ void loop() {
 			//UART.nunchuck.upperButton = true;
 			upperBtn = true;
 			lastCmd = command;
+			break;
 		}
 		case 'f':
 		{
 			//UART.nunchuck.upperButton = false;
 			upperBtn = false;
 			lastCmd = command;
+			break;
 		}
 		// kill motor
 		case 'k':
@@ -216,15 +216,29 @@ void loop() {
 			// UART.nunchuck.valueY = 127;
 			Yvalue = 127;
 			lastCmd = command;
+			break;
 		}
-
-		// now getting removed nunchuck code
+		// show telemetry
+		case 't':
+		{
+			if (VESCtlmty != "")
+			{
+				Serial.println(VESCtlmty);
+			}
+			else
+			{
+				Serial.println("no data");
+			}
+			Serial.println(PWMinput + String(PotNValue));
+			break;
+		}
+		// now getting PWM, removed nunchuck code
 		
 			default:
 				break;
 		}
 	}
-
+	
 	cMills = millis();
 	if (cMills - pMills > cTime)
 	{
@@ -234,28 +248,23 @@ void loop() {
 			lastCmd = "";
 		}
 
-		
 		if (UART.getVescValues()) {
-			Serial.print("RPM ");
-			Serial.println(UART.data.rpm);
-			Serial.print("Batt volts ");
-			Serial.println(UART.data.inpVoltage);
-			Serial.print("Amps ");
-			Serial.println(UART.data.avgMotorCurrent);
-			Serial.print("duty Cycle ");
-			Serial.println(UART.data.dutyCycleNow);
+			VESCtlmty = "RPM " + UART.data.rpm + '\n';
+			VESCtlmty = VESCtlmty + "Batt volts " + String(UART.data.inpVoltage) + '\n';
+			VESCtlmty = VESCtlmty + "Amps " + String(UART.data.avgMotorCurrent) + '\n';
+			VESCtlmty = VESCtlmty + "duty Cycle " + String(UART.data.dutyCycleNow);
 		}
 		else
 		{
-			Serial.println("Failed to get data!!!");
+			VESCtlmty = "";
 		}
 		UART.nunchuck.lowerButton = lowerBtn;
 		UART.nunchuck.upperButton = upperBtn;
 		//UART.nunchuck.valueY = Yvalue;
 		UART.setNunchuckValues();
 
-    // Serial.print("pot Value is: " + String(channel_1) + " ");
-    // Serial.println(PotNValue);
+    	PWMinput = "PWM Value is: " + String(channel_1) + " ";
+    	//Serial.println(PWMinput + String(PotNValue));
 		LEDstate = TogLED(LEDstate);
 	}
   if(cMills - p2Mills > rTime)
