@@ -4,12 +4,14 @@
 
     This is a mash up to 2 projects so needs some work
     Right now has code for both wii numchuck and PWM to VESC
-    5/3/2019
+    5/5/2019
 
-		Pins A9 A10 serial A9 gr, A10 orange
-		Pin A0 is in from RC
+		Pins PA9(Tx1) PA10(Rx1) serial from VESC A9 gr, A10 orange
+		Pins A2(TX2), A3(Rx2) serial out to other MC
+		Pin PA0 is PWM in from RC
 		Pin PB6 is PWM out to VESC 
 		Pin PB0 is Analog read from throttle
+		Pins PB11, PB12 have 10k pull ups on breakout board
 
 */
 #include <Arduino.h>
@@ -22,23 +24,32 @@ VescUart UART;
 int32_t channel_1_start, channel_1_stop, channel_1;
 
 // #define LED PB12 // if black pill
+#define DEBUG 1
+#define STR_BUFFER_SZ 50
+
 unsigned long pMills = 0;
 unsigned long p2Mills = 0;
 unsigned long cMills = 0;
-unsigned long cTime = 500; // polling / send command time in ms
+unsigned long cTime = 200; // polling / send command time in ms
 unsigned long rTime = 100;  // polling / for PWM
 uint32_t TccrVal = 1000;
 
+// for Analog throttle input from pot or hall sensor
 uint32_t PotValue;
 uint32_t oldPotNValue;
 uint32_t PotNValue;
 uint32_t PWMremValue;
+uint32_t AnScaleOffset = 1500; // PWM offset from base 1000 full 1500 half
+// 40 is full range 80 half PWM range
+uint32_t AnScaleFactor = 80; // number to div 1024 by (* 10)
 
+// Led hearbeat
 uint8_t LEDstate = 1;
 
 //char Tchar;
 char CmdChr;
-String VESCtlmty;
+String VESCtlmtyHR;  // human readable
+String VESCtlmty; // for fubarino 
 String command;
 String Sspeed;
 String PWMinput;
@@ -48,7 +59,7 @@ int Yvalue;
 String lastCmd;
 int throttle = 127;
 
-char buffer[50]; // "string"
+char buffer[STR_BUFFER_SZ]; // "string" buffer
 int bi; // buffer index
 
 // Read String input handling: thanks Rick
@@ -70,7 +81,7 @@ char* readCharAInput(void)
 		}
 		Serial.print(Ch);
 	}
-	if (((Ch == '\n')||(Ch == '\r')) || (bi > 49)) {
+	if (((Ch == '\n')||(Ch == '\r')) || (bi > (STR_BUFFER_SZ-1))) {
 		char* somearray = new char[bi + 1];
 		for (int j = 0; j < bi; j++)
 			somearray[j] = buffer[j];
@@ -104,6 +115,8 @@ uint8_t TogLED(uint8_t state)
 	return rState;
 }
 
+
+
 // timer interupt handler for channel 1 pulse detection
 void handler_channel_1(void) {
   if (0b1 & GPIOA_BASE->IDR) {
@@ -116,12 +129,15 @@ void handler_channel_1(void) {
     TIMER2_BASE->CCER &= ~TIMER_CCER_CC1P;
   }
 }
+
 void setup() {
 	pinMode(LED_BUILTIN, OUTPUT);     // Initialize the LED_BUILTIN pin as an output
 	/** Setup Serial port to enter commands */
 	Serial.begin(115200);
 	/** Setup UART port (Serial1 on bluepill) */
 	Serial1.begin(115200);
+	/** Setup port for upstream MC (Serial2 on bluepill) */
+	Serial2.begin(115200);
 
 	while (!Serial1) { ; }
 
@@ -182,7 +198,6 @@ void loop() {
 			/** The lowerButton is used to set cruise control */
 		case 'c':
 		{
-			//UART.nunchuck.lowerButton = true;
 			lowerBtn = true;
 			lastCmd = command;
 			break;
@@ -190,7 +205,6 @@ void loop() {
 		/** Set cruise control off*/
 		case 'o':
 		{
-			//UART.nunchuck.lowerButton = false;
 			lowerBtn = false;
 			lastCmd = command;
 			break;
@@ -198,19 +212,18 @@ void loop() {
 		// The upperButton is reverse (we think ??)
 		case 'r':
 		{
-			//UART.nunchuck.upperButton = true;
 			upperBtn = true;
 			lastCmd = command;
 			break;
 		}
+		//forward
 		case 'f':
 		{
-			//UART.nunchuck.upperButton = false;
 			upperBtn = false;
 			lastCmd = command;
 			break;
 		}
-		// kill motor
+		// kill motor (don't use)
 		case 'k':
 		{
 			// UART.nunchuck.valueY = 127;
@@ -221,14 +234,7 @@ void loop() {
 		// show telemetry
 		case 't':
 		{
-			if (VESCtlmty != "")
-			{
-				Serial.println(VESCtlmty);
-			}
-			else
-			{
-				Serial.println("no data");
-			}
+			Serial.println(VESCtlmtyHR);
 			Serial.println(PWMinput + String(PotNValue));
 			break;
 		}
@@ -238,33 +244,43 @@ void loop() {
 				break;
 		}
 	}
-	
+
 	cMills = millis();
 	if (cMills - pMills > cTime)
 	{
 		pMills = cMills;
-		if (lastCmd != "") {
-			Serial.println(lastCmd);
-			lastCmd = "";
+		if (DEBUG){
+			if (lastCmd != "") {
+				Serial.println(lastCmd);
+				lastCmd = "";
+			}
 		}
-
 		if (UART.getVescValues()) {
-			VESCtlmty = "RPM " + UART.data.rpm + '\n';
-			VESCtlmty = VESCtlmty + "Batt volts " + String(UART.data.inpVoltage) + '\n';
-			VESCtlmty = VESCtlmty + "Amps " + String(UART.data.avgMotorCurrent) + '\n';
-			VESCtlmty = VESCtlmty + "duty Cycle " + String(UART.data.dutyCycleNow);
+			if (DEBUG){
+				VESCtlmtyHR = "Throttle PWM " + String(TIMER14_BASE->CCR1) + '\n';
+				VESCtlmtyHR = VESCtlmtyHR + "RPM " + UART.data.rpm + '\n';
+				VESCtlmtyHR = VESCtlmty + "Batt volts " + String(UART.data.inpVoltage) + '\n';
+				VESCtlmtyHR = VESCtlmty + "duty Cycle " + String(UART.data.dutyCycleNow);
+				VESCtlmtyHR = VESCtlmty + "Batt volts " + String(UART.data.inpVoltage) + '\n';
+			}
+			VESCtlmty = String(TIMER14_BASE->CCR1) + "," + String(UART.data.rpm) + ',' + String(UART.data.avgMotorCurrent);
+			VESCtlmty = VESCtlmty + "," +String(UART.data.dutyCycleNow) + "," + String(UART.data.inpVoltage) + '\n';
 		}
 		else
 		{
-			VESCtlmty = "";
+			if (DEBUG)
+				VESCtlmtyHR = "Throttle PWM " + String(TIMER14_BASE->CCR1) + '\n';
+			VESCtlmty = String(TIMER14_BASE->CCR1);
 		}
 		UART.nunchuck.lowerButton = lowerBtn;
 		UART.nunchuck.upperButton = upperBtn;
 		//UART.nunchuck.valueY = Yvalue;
 		UART.setNunchuckValues();
-
-    	PWMinput = "PWM Value is: " + String(channel_1) + " ";
-    	//Serial.println(PWMinput + String(PotNValue));
+		Serial2.println(VESCtlmty); // to other MC
+		if (DEBUG){
+    		PWMinput = "PWM Value is: " + String(channel_1) + " ";
+    		Serial.println(PWMinput + String(PotNValue));
+		}
 		LEDstate = TogLED(LEDstate);
 	}
   if(cMills - p2Mills > rTime)
@@ -273,13 +289,15 @@ void loop() {
 		p2Mills = cMills;
 		PotValue = analogRead(PB0);
 		// this rownds to the 10's and scales the pot input
-    PotNValue = ((PotValue / 40)*10) + 1000;
+    	PotNValue = ((PotValue / AnScaleFactor)*10) + AnScaleOffset;
+	// Manual override
 		if (PotNValue != oldPotNValue)
 		{
 			TIMER4_BASE->CCR1 = PotNValue;
 			oldPotNValue = PotNValue;
 		}
 		else
+		//pass incoming PWM to outgoing PWM
 			TIMER4_BASE->CCR1 = channel_1;
 	}
 }
