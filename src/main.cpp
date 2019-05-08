@@ -25,7 +25,8 @@ int32_t channel_1_start, channel_1_stop, channel_1;
 
 // #define LED PB12 // if black pill
 #define DEBUG 1
-#define STR_BUFFER_SZ 50
+#define STR_BUFFER_SZ 30
+#define V_RETRY 10
 
 unsigned long pMills = 0;
 unsigned long p2Mills = 0;
@@ -43,6 +44,14 @@ uint32_t AnScaleOffset = 1500; // PWM offset from base 1000 full 1500 half
 // 40 is full range 80 half PWM range
 uint32_t AnScaleFactor = 80; // number to div 1024 by (* 10)
 
+uint32_t HallBase = 1024;
+uint32_t hallScale = 2;
+
+uint8_t AutoDrive;
+uint32_t ManOverideCount;
+uint32_t AutoResumeCount;
+uint32_t VESCreadRetry;
+
 // Led hearbeat
 uint8_t LEDstate = 1;
 
@@ -51,7 +60,7 @@ char CmdChr;
 String VESCtlmtyHR;  // human readable
 String VESCtlmty; // for fubarino 
 String command;
-String Sspeed;
+//String Sspeed;
 String PWMinput;
 bool upperBtn;
 bool lowerBtn;
@@ -151,6 +160,9 @@ void setup() {
 	bi = 0;
 	buffer[0] = '\0';
 
+	AutoDrive = 1;
+	ManOverideCount = 0;
+	AutoResumeCount = 0;
 // Example pulse generation code
   pinMode(PB6, PWM);
   pinMode(PB0,INPUT_ANALOG);
@@ -196,9 +208,12 @@ void loop() {
 		switch (CmdChr)
 		{
 			/** The lowerButton is used to set cruise control */
+			// continue auto
 		case 'c':
 		{
-			lowerBtn = true;
+			//lowerBtn = true;
+			AutoDrive = 1;
+			ManOverideCount = 0;
 			lastCmd = command;
 			break;
 		}
@@ -246,58 +261,97 @@ void loop() {
 	}
 
 	cMills = millis();
+	// telemetry loop timer
 	if (cMills - pMills > cTime)
 	{
 		pMills = cMills;
-		if (DEBUG){
-			if (lastCmd != "") {
-				Serial.println(lastCmd);
-				lastCmd = "";
-			}
+		
+		if (lastCmd != "") {
+			Serial.println(lastCmd);
+			lastCmd = "";
+		
 		}
-		if (UART.getVescValues()) {
-			if (DEBUG){
-				VESCtlmtyHR = "Throttle PWM " + String(TIMER14_BASE->CCR1) + '\n';
-				VESCtlmtyHR = VESCtlmtyHR + "RPM " + UART.data.rpm + '\n';
-				VESCtlmtyHR = VESCtlmty + "Batt volts " + String(UART.data.inpVoltage) + '\n';
-				VESCtlmtyHR = VESCtlmty + "duty Cycle " + String(UART.data.dutyCycleNow);
-				VESCtlmtyHR = VESCtlmty + "Batt volts " + String(UART.data.inpVoltage) + '\n';
-			}
-			VESCtlmty = String(TIMER14_BASE->CCR1) + "," + String(UART.data.rpm) + ',' + String(UART.data.avgMotorCurrent);
-			VESCtlmty = VESCtlmty + "," +String(UART.data.dutyCycleNow) + "," + String(UART.data.inpVoltage) + '\n';
-		}
-		else
+
+		// if not connected to VESC the VescUart read process will deadlock 
+		// the STM32 if we don't allow extra time for stuff to clear out of buffers
+		VESCreadRetry++;
+		if (VESCreadRetry > V_RETRY)
 		{
-			if (DEBUG)
-				VESCtlmtyHR = "Throttle PWM " + String(TIMER14_BASE->CCR1) + '\n';
-			VESCtlmty = String(TIMER14_BASE->CCR1);
+			if (UART.getVescValues()) {
+				if (DEBUG)
+				{
+					VESCtlmtyHR = "Throttle PWM " + String(TIMER14_BASE->CCR1) + '\n';
+					VESCtlmtyHR = VESCtlmtyHR + "RPM " + UART.data.rpm + '\n';
+					VESCtlmtyHR = VESCtlmty + "Batt volts " + String(UART.data.inpVoltage) + '\n';
+					VESCtlmtyHR = VESCtlmty + "duty Cycle " + String(UART.data.dutyCycleNow);
+					VESCtlmtyHR = VESCtlmty + "Batt volts " + String(UART.data.inpVoltage) + '\n';
+					Serial.println(VESCtlmtyHR);
+				}
+		
+				VESCtlmty = String(TIMER14_BASE->CCR1) + "," + String(UART.data.rpm) + ',' + String(UART.data.avgMotorCurrent);
+				VESCtlmty = VESCtlmty + "," +String(UART.data.dutyCycleNow) + "," + String(UART.data.inpVoltage) + '\n';
+				VESCreadRetry = V_RETRY;
+			}
+			else
+			{
+				VESCreadRetry = 0;
+			}
 		}
-		UART.nunchuck.lowerButton = lowerBtn;
-		UART.nunchuck.upperButton = upperBtn;
-		//UART.nunchuck.valueY = Yvalue;
-		UART.setNunchuckValues();
+		if (DEBUG)
+			VESCtlmtyHR = "Throttle PWM " + String(TIMER14_BASE->CCR1) + '\n';
+		VESCtlmty = String(TIMER14_BASE->CCR1);
+		// UART.nunchuck.lowerButton = lowerBtn;
+		// UART.nunchuck.upperButton = upperBtn;
+		// UART.nunchuck.valueY = Yvalue;
+		// UART.setNunchuckValues();
 		Serial2.println(VESCtlmty); // to other MC
-		if (DEBUG){
+		if (DEBUG)
+		{
     		PWMinput = "PWM Value is: " + String(channel_1) + " ";
-    		Serial.println(PWMinput + String(PotNValue));
-		}
+    		Serial.println(PWMinput + String(PotNValue) + " " + String(PotValue));
+		}	
 		LEDstate = TogLED(LEDstate);
 	}
-  if(cMills - p2Mills > rTime)
+	// PWM loop timer
+  	if(cMills - p2Mills > rTime)
 	{
 		PWMremValue = channel_1;
 		p2Mills = cMills;
-		PotValue = analogRead(PB0);
+		PotValue = (analogRead(PB0)-HallBase) * hallScale;
+		if (PotValue > 4096)
+			PotValue = 4096;
 		// this rownds to the 10's and scales the pot input
     	PotNValue = ((PotValue / AnScaleFactor)*10) + AnScaleOffset;
-	// Manual override
-		if (PotNValue != oldPotNValue)
+		if (AutoDrive){
+      	//pass incoming PWM to outgoing PWM
+			TIMER4_BASE->CCR1 = channel_1;
+			// Manual override
+      		if (PotValue > 200)
+      		{
+        		ManOverideCount++;
+        		if (ManOverideCount > 5)
+        		{
+          			AutoDrive = 0;
+          			ManOverideCount = 5;
+        		}
+      		}
+      		else
+        		ManOverideCount = 0;
+    	}
+		else
 		{
 			TIMER4_BASE->CCR1 = PotNValue;
-			oldPotNValue = PotNValue;
+			if (PotValue <= 200)
+				AutoResumeCount++;
+			else
+				AutoResumeCount =0;
+			if(AutoResumeCount > 10)
+			{
+				AutoDrive = 1;
+				AutoResumeCount = 0;
+			}
 		}
-		else
-		//pass incoming PWM to outgoing PWM
-			TIMER4_BASE->CCR1 = channel_1;
+	
+		
 	}
 }
