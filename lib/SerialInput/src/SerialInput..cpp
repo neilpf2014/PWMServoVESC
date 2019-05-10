@@ -10,34 +10,42 @@ SerialInput::SerialInput(void)
     biH = 0;
 }
 
-SerialInput::SerialInput(uint32_t Sz)
+SerialInput::SerialInput(int Sz)
 {
     buffer = new char[Sz];
     bufferHard = nullptr;
     BufferSz = Sz;
+	buffer[0] = '\0';
     bi = 0;
     biH = 0;
 }
 
-SerialInput::SerialInput(uint32_t Sz, HardwareSerial* Port)
+SerialInput::SerialInput(int Sz, HardwareSerial* Port)
 {
     bufferHard = new char[Sz];
+	bufferHard[0] = '\0';
     buffer = nullptr;
     BufferSz = Sz;
     bi = 0;
     biH = 0;
 }
 
-void SerialInput::initUSBserial(uint32_t Sz)
+void SerialInput::initUSBserial(int Sz)
 {
-    if (buffer = nullptr)
-        buffer = new char[Sz];
+    if (buffer == nullptr){
+		 buffer = new char[Sz];
+	}
+	buffer[0] = '\0';
+	bi = 0;
 }
 
-void SerialInput::initHardserial(uint32_t Sz)
+void SerialInput::initHardserial(int Sz)
 {
-    if (bufferHard = nullptr)
+    if (bufferHard == nullptr){
         bufferHard = new char[Sz];
+	}
+	bufferHard[0] = '\0';
+	biH = 0;
 }
 
 
@@ -85,24 +93,24 @@ char* SerialInput::readHardserial(void)
 	retVal = nullptr;
 
 	// called each time the function is called to collect stuff from serial buffer
-	while ((Serial.available() > 0))
+	while ((SerialHard->available() > 0))
 	{
-		Ch = Serial.read();
+		Ch = SerialHard->read();
 		if ((Ch != '\n') && (Ch != '\r')) //need to trap both <CR> & <LF> !
 		{
-			buffer[bi] = Ch;
-			bi++;
+			bufferHard[biH] = Ch;
+			biH++;
 		}
-		Serial.print(Ch);
+		SerialHard->print(Ch);
 	}
 	if (((Ch == '\n')||(Ch == '\r')) || (bi > (BufferSz-1))) {
 		char* somearray = new char[bi + 1];
-		for (int j = 0; j < bi; j++)
-			somearray[j] = buffer[j];
-		somearray[bi] = '\0'; // null termination
+		for (int j = 0; j < biH; j++)
+			somearray[j] = bufferHard[j];
+		somearray[biH] = '\0'; // null termination
 		retVal = somearray;
 		// reset buffer
-		buffer[0] = '\0';
+		bufferHard[0] = '\0';
 		bi = 0;
 	}
 	if (retVal != nullptr)
