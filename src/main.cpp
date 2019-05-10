@@ -60,6 +60,7 @@ char CmdChr;
 String VESCtlmtyHR;  // human readable
 String VESCtlmty; // for fubarino 
 String command;
+//String testVal;
 //String Sspeed;
 String PWMinput;
 bool upperBtn;
@@ -308,8 +309,18 @@ void loop() {
 		if (DEBUG)
 		{
     		PWMinput = "PWM Value is: " + String(channel_1) + " ";
-    		Serial.println(PWMinput + String(PotNValue) + " " + String(PotValue));
-		}	
+    		PWMinput = PWMinput + String(PotNValue) + " " + String(PotValue);
+			if (AutoDrive){
+				PWMinput = PWMinput + " auto on";
+			}
+			else
+			{
+				PWMinput = PWMinput + " manual on";
+			}
+			Serial.println(PWMinput);
+		}
+
+
 		LEDstate = TogLED(LEDstate);
 	}
 	// PWM loop timer
