@@ -36,7 +36,8 @@ unsigned long rTime = 100;  // polling / for PWM
 uint32_t TccrVal = 1000;
 
 // for Analog throttle input from pot or hall sensor
-uint32_t PotValue;
+int AnReadVal;
+int PotValue;
 uint32_t oldPotNValue;
 uint32_t PotNValue;
 uint32_t PWMremValue;
@@ -44,8 +45,8 @@ uint32_t AnScaleOffset = 1500; // PWM offset from base 1000 full 1500 half
 // 40 is full range 80 half PWM range
 uint32_t AnScaleFactor = 80; // number to div 1024 by (* 10)
 
-uint32_t HallBase = 1024;
-uint32_t hallScale = 2;
+int HallBase = 1024;
+int hallScale = 2;
 
 uint8_t AutoDrive;
 uint32_t ManOverideCount;
@@ -250,6 +251,7 @@ void loop() {
 		// show telemetry
 		case 't':
 		{
+			Serial.println("test debug");
 			Serial.println(VESCtlmtyHR);
 			Serial.println(PWMinput + String(PotNValue));
 			break;
@@ -309,7 +311,7 @@ void loop() {
 		if (DEBUG)
 		{
     		PWMinput = "PWM Value is: " + String(channel_1) + " ";
-    		PWMinput = PWMinput + String(PotNValue) + " " + String(PotValue);
+    		PWMinput = PWMinput + String(PotNValue) + " " + String(PotValue) + " " + String(AnReadVal);
 			if (AutoDrive){
 				PWMinput = PWMinput + " auto on";
 			}
@@ -328,7 +330,8 @@ void loop() {
 	{
 		PWMremValue = channel_1;
 		p2Mills = cMills;
-		PotValue = (analogRead(PB0)-HallBase) * hallScale;
+		AnReadVal = analogRead(PB0);
+		PotValue = abs((AnReadVal-HallBase) * hallScale);
 		if (PotValue > 4096)
 			PotValue = 4096;
 		// this rownds to the 10's and scales the pot input
